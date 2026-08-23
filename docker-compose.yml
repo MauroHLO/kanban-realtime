@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:17
+    container_name: kanban_db
+    environment:
+      POSTGRES_USER: kanban_user
+      POSTGRES_PASSWORD: kanban_pass
+      POSTGRES_DB: kanban_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - kanban_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U kanban_user -d kanban_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  kanban_pg_data:
