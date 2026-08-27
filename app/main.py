@@ -7,6 +7,11 @@ from sqlalchemy.orm import selectinload
 from fastapi.security import OAuth2PasswordRequestForm
 from app.auth import hash_password, verify_password, create_access_token, get_current_user
 
+from fastapi import WebSocket, WebSocketDisconnect, Query
+from jose import JWTError, jwt
+from app.websocket_manager import manager
+from app.config import settings
+
 app = FastAPI(title="Kanban Realtime")
 
 
@@ -174,4 +179,48 @@ async def move_card(
 
     await db.commit()
     await db.refresh(card)
+    board_id = target_column.board_id
+    await manager.broadcast(board_id, {
+        "type": "card_moved",
+        "card_id": card.id,
+        "old_column_id": old_column_id,
+        "new_column_id": card.column_id,
+        "new_position": card.position,
+    })
     return card
+
+async def get_user_from_token(token: str, db: AsyncSession) -> models.User | None:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+    except JWTError:
+        return None
+
+    return await db.scalar(select(models.User).where(models.User.username == username))
+
+
+@app.websocket("/ws/boards/{board_id}")
+async def websocket_board(
+    websocket: WebSocket,
+    board_id: int,
+    token: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await get_user_from_token(token, db)
+    if user is None:
+        await websocket.close(code=1008)  # policy violation
+        return
+
+    board = await db.get(models.Board, board_id)
+    if board is None:
+        await websocket.close(code=1008)
+        return
+
+    await manager.connect(board_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # mantém a conexão viva; ainda não processamos mensagens recebidas
+    except WebSocketDisconnect:
+        manager.disconnect(board_id, websocket)

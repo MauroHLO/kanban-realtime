@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WebSocket Test Client</title>
+</head>
+
+<body>
+    <h2>Kanban WebSocket Test</h2>
+    <label>Board ID: <input id="boardId" value="1"></label><br><br>
+    <label>Token JWT: <input id="token" size="60"></label><br><br>
+    <button onclick="connect()">Conectar</button>
+    <button onclick="disconnect()">Desconectar</button>
+
+    <h3>Mensagens recebidas:</h3>
+    <pre id="log" style="background: #eee; padding: 10px; height: 300px; overflow-y: scroll;"></pre>
+
+    <script>
+        let ws = null;
+
+        function log(msg) {
+            document.getElementById("log").textContent += msg + "\n";
+        }
+
+        function connect() {
+            const boardId = document.getElementById("boardId").value;
+            const token = document.getElementById("token").value;
+            ws = new WebSocket(`ws://localhost:8000/ws/boards/${boardId}?token=${token}`);
+
+            ws.onopen = () => log("[Conectado]");
+            ws.onmessage = (event) => log("Recebido: " + event.data);
+            ws.onclose = (event) => log(`[Desconectado] code=${event.code}`);
+            ws.onerror = (error) => log("[Erro] " + error);
+        }
+
+        function disconnect() {
+            if (ws) ws.close();
+        }
+    </script>
+</body>
+
+</html>
