@@ -77,6 +77,12 @@ async def create_column(
     db.add(new_column)
     await db.commit()
     await db.refresh(new_column, attribute_names=["cards"])
+    await manager.broadcast(column.board_id, {
+            "type": "column_created",
+            "column_id": new_column.id,
+            "title": new_column.title,
+            "position": new_column.position,
+        })
     return new_column
 
 
@@ -104,6 +110,13 @@ async def create_card(
     db.add(new_card)
     await db.commit()
     await db.refresh(new_card)
+    await manager.broadcast(column.board_id, {
+            "type": "card_created",
+            "card_id": new_card.id,
+            "column_id": new_card.column_id,
+            "title": new_card.title,
+            "position": new_card.position,
+        })
     return new_card
 
 @app.post("/login")
