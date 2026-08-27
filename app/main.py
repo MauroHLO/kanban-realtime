@@ -12,7 +12,10 @@ from jose import JWTError, jwt
 from app.websocket_manager import manager
 from app.config import settings
 
+from fastapi.staticfiles import StaticFiles
+
 app = FastAPI(title="Kanban Realtime")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/health")
