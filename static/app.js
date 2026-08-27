@@ -61,6 +61,7 @@ function renderBoard(board) {
     for (const column of sortedColumns) {
         const columnEl = document.createElement("div");
         columnEl.className = "column";
+        columnEl.dataset.columnId = column.id;
 
         const titleEl = document.createElement("div");
         titleEl.className = "column-title";
@@ -73,8 +74,27 @@ function renderBoard(board) {
             const cardEl = document.createElement("div");
             cardEl.className = "card";
             cardEl.textContent = card.title;
+            cardEl.draggable = true;
+            cardEl.dataset.cardId = card.id;
+
+            cardEl.addEventListener("dragstart", (e) => {
+                e.dataTransfer.setData("text/plain", card.id);
+            });
+
             columnEl.appendChild(cardEl);
         }
+
+        columnEl.addEventListener("dragover", (e) => {
+            e.preventDefault(); // necessário para permitir o drop
+        });
+
+        columnEl.addEventListener("drop", (e) => {
+            e.preventDefault();
+            const cardId = e.dataTransfer.getData("text/plain");
+            const newColumnId = column.id;
+            const newPosition = column.cards.length; // solta sempre no final, por simplicidade
+            moveCard(cardId, newColumnId, newPosition);
+        });
 
         boardEl.appendChild(columnEl);
     }
@@ -96,4 +116,16 @@ function connectWebSocket() {
 
     ws.onclose = () => console.log("WebSocket desconectado");
     ws.onerror = (error) => console.error("Erro WebSocket:", error);
+}
+
+async function moveCard(cardId, newColumnId, newPosition) {
+    const token = localStorage.getItem("token");
+    await fetch(`${API_BASE}/cards/${cardId}/move`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ new_column_id: parseInt(newColumnId), new_position: newPosition }),
+    });
 }
