@@ -16,5 +16,16 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build: .
+    container_name: kanban_app
+    env_file:
+      - .env.docker
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   kanban_pg_data:

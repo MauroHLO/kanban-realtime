@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.git/
+test_ws_client.html
+.env.docker
