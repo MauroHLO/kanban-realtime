@@ -25,6 +25,25 @@ O frontend (HTML/CSS/JS puro, sem framework) consome a API REST para carregar o 
 
 Cards podem ser arrastados entre colunas via HTML5 Drag and Drop API nativa, disparando o endpoint de movimentação, que por sua vez propaga o evento para os demais clientes.
 
+## Estrutura
+
+```
+kanban-realtime/
+├── app/
+│   ├── main.py            # rotas REST e WebSocket
+│   ├── auth.py             # hash de senha, JWT, dependency de usuário autenticado
+│   ├── models.py           # models SQLAlchemy
+│   ├── schemas.py          # schemas Pydantic
+│   ├── database.py         # engine assíncrona, sessão
+│   ├── config.py           # variáveis de ambiente
+│   └── websocket_manager.py # gerenciamento de conexões WebSocket por board
+├── alembic/                # migrations
+├── static/                 # frontend (HTML, CSS, JS puro)
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
+```
+
 ## Decisões técnicas
 
 **Posição por inteiro sequencial, não fracionária.** Cada card e coluna guarda um campo `position` inteiro. Mover um item exige reindexar os vizinhos afetados (decrementar quem ficou entre a posição antiga e a nova, ou o inverso) em vez de apenas escrever um novo valor de posição fracionária. A escolha prioriza previsibilidade e facilidade de depuração — os valores de posição são sempre uma sequência limpa (0, 1, 2, ...), sem acúmulo de casas decimais ao longo de sucessivos reordenamentos. O custo é uma operação de `UPDATE` em lote a cada movimentação, que em SQL é uma única query, não um laço.
@@ -57,18 +76,34 @@ Uma consequência direta dessa escolha: relações do SQLAlchemy (`relationship`
 
 ## Como rodar
 
-Requer Docker e Docker Compose instalados.
+### Opção 1 — Docker (recomendada, sobe tudo com um comando)
 
 ```bash
 git clone https://github.com/MauroHLO/kanban-realtime.git
 cd kanban-realtime
 cp .env.example .env.docker
-```
-
-Edite `.env.docker` preenchendo `SECRET_KEY` com uma chave gerada (`python -c "import secrets; print(secrets.token_hex(32))"`).
-
-```bash
+# preencha SECRET_KEY em .env.docker (python -c "import secrets; print(secrets.token_hex(32))")
 docker compose up -d --build
 ```
 
-A aplicação estará disponível em `http://localhost:8000/static/index.html`, e a documentação interativa da API em `http://localhost:8000/docs`.
+Acesse `http://localhost:8000/static/index.html` — documentação da API em `http://localhost:8000/docs`.
+
+### Opção 2 — Ambiente local
+
+```bash
+python -m venv venv
+venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+# configure .env com DATABASE_URL apontando para um Postgres local
+alembic upgrade head
+uvicorn app.main:app --reload
+```
+
+Acesse `http://localhost:8000/static/index.html`
+
+## Próximos passos
+
+- Testes automatizados (pytest) cobrindo reordenação de cards e broadcast de eventos
+- Adicionar membros a um board (usar o model `BoardMembership`, hoje modelado mas não exposto via API)
+- Posição fracionária para eliminar a necessidade de reindexar vizinhos a cada movimentação
+- Reconciliar o DOM ao receber eventos, em vez de recarregar o board inteiro a cada mudança
