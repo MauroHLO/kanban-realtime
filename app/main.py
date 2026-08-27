@@ -1,10 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app import models, schemas
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
+from fastapi.security import OAuth2PasswordRequestForm
+from app.auth import hash_password, verify_password, create_access_token, get_current_user
 
 app = FastAPI(title="Kanban Realtime")
 
@@ -20,7 +22,7 @@ async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(get_d
     if existing:
         raise HTTPException(status_code=400, detail="Username already taken")
 
-    new_user = models.User(username=user.username, hashed_password=user.password)
+    new_user = models.User(username=user.username, hashed_password=hash_password(user.password))
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
@@ -28,12 +30,12 @@ async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(get_d
 
 
 @app.post("/boards", response_model=schemas.BoardOut)
-async def create_board(board: schemas.BoardCreate, owner_id: int, db: AsyncSession = Depends(get_db)):
-    owner = await db.get(models.User, owner_id)
-    if not owner:
-        raise HTTPException(status_code=404, detail="Owner not found")
-
-    new_board = models.Board(title=board.title, owner_id=owner_id)
+async def create_board(
+    board: schemas.BoardCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    new_board = models.Board(title=board.title, owner_id=current_user.id)
     db.add(new_board)
     await db.commit()
     await db.refresh(new_board, attribute_names=["columns"])
@@ -54,7 +56,11 @@ async def get_board(board_id: int, db: AsyncSession = Depends(get_db)):
 
 # --- Columns ---
 @app.post("/columns", response_model=schemas.ColumnOut)
-async def create_column(column: schemas.ColumnCreate, db: AsyncSession = Depends(get_db)):
+async def create_column(
+    column: schemas.ColumnCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     board = await db.get(models.Board, column.board_id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -72,7 +78,11 @@ async def create_column(column: schemas.ColumnCreate, db: AsyncSession = Depends
 
 # --- Cards ---
 @app.post("/cards", response_model=schemas.CardOut)
-async def create_card(card: schemas.CardCreate, db: AsyncSession = Depends(get_db)):
+async def create_card(
+    card: schemas.CardCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     column = await db.get(models.Column, card.column_id)
     if not column:
         raise HTTPException(status_code=404, detail="Column not found")
@@ -91,3 +101,16 @@ async def create_card(card: schemas.CardCreate, db: AsyncSession = Depends(get_d
     await db.commit()
     await db.refresh(new_card)
     return new_card
+
+@app.post("/login")
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(models.User).where(models.User.username == form_data.username))
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
