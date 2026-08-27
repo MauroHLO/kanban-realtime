@@ -1,9 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, update
 from app.database import get_db
 from app import models, schemas
-from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from fastapi.security import OAuth2PasswordRequestForm
 from app.auth import hash_password, verify_password, create_access_token, get_current_user
@@ -114,3 +113,65 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.patch("/cards/{card_id}/move", response_model=schemas.CardOut)
+async def move_card(
+    card_id: int,
+    move: schemas.CardMove,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    card = await db.get(models.Card, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    old_column_id = card.column_id
+    old_position = card.position
+
+    target_column = await db.get(models.Column, move.new_column_id)
+    if not target_column:
+        raise HTTPException(status_code=404, detail="Target column not found")
+
+    if old_column_id == move.new_column_id:
+        # Reordenando dentro da mesma coluna
+        if move.new_position > old_position:
+            await db.execute(
+                update(models.Card)
+                .where(
+                    models.Card.column_id == old_column_id,
+                    models.Card.position > old_position,
+                    models.Card.position <= move.new_position,
+                    models.Card.id != card_id,
+                )
+                .values(position=models.Card.position - 1)
+            )
+        elif move.new_position < old_position:
+            await db.execute(
+                update(models.Card)
+                .where(
+                    models.Card.column_id == old_column_id,
+                    models.Card.position >= move.new_position,
+                    models.Card.position < old_position,
+                    models.Card.id != card_id,
+                )
+                .values(position=models.Card.position + 1)
+            )
+    else:
+        # Movendo para outra coluna
+        await db.execute(
+            update(models.Card)
+            .where(models.Card.column_id == old_column_id, models.Card.position > old_position)
+            .values(position=models.Card.position - 1)
+        )
+        await db.execute(
+            update(models.Card)
+            .where(models.Card.column_id == move.new_column_id, models.Card.position >= move.new_position)
+            .values(position=models.Card.position + 1)
+        )
+
+    card.column_id = move.new_column_id
+    card.position = move.new_position
+
+    await db.commit()
+    await db.refresh(card)
+    return card

@@ -70,3 +70,7 @@ class BoardOut(BoardBase):
     columns: list[ColumnOut] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class CardMove(BaseModel):
+    new_column_id: int
+    new_position: int
