@@ -34,6 +34,7 @@ async function login() {
     boardScreen.style.display = "block";
 
     loadBoard();
+    connectWebSocket();
 }
 
 async function loadBoard() {
@@ -77,4 +78,22 @@ function renderBoard(board) {
 
         boardEl.appendChild(columnEl);
     }
+}
+
+let ws = null;
+
+function connectWebSocket() {
+    const token = localStorage.getItem("token");
+    ws = new WebSocket(`ws://localhost:8000/ws/boards/${BOARD_ID}?token=${token}`);
+
+    ws.onopen = () => console.log("WebSocket conectado");
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("Evento recebido:", data);
+        loadBoard();
+    };
+
+    ws.onclose = () => console.log("WebSocket desconectado");
+    ws.onerror = (error) => console.error("Erro WebSocket:", error);
 }
